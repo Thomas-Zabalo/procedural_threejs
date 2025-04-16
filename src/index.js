@@ -10,6 +10,21 @@ import { RGBELoader } from 'https://cdn.skypack.dev/three-stdlib@2.8.5/loaders/R
 import { mergeBufferGeometries } from 'https://cdn.skypack.dev/three-stdlib@2.8.5/utils/BufferGeometryUtils';
 import SimplexNoise from 'https://cdn.skypack.dev/simplex-noise@3.0.0';
 
+// Resource tracking system
+const resources = {
+    meshes: [],
+    geometries: [],
+    materials: [],
+    textures: [],
+    envmaps: []
+};
+
+// DOM Elements
+const colorPicker = document.getElementById('head');
+const sizeSelector = document.getElementById('mapSizeSelect');
+let maxSize = parseInt(sizeSelector.value) + 1;
+
+// Three.js Setup
 const scene = new Scene();
 scene.background = new Color('#FFEECC');
 
@@ -25,76 +40,145 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-const light = new PointLight(new Color("#F07167").convertSRGBToLinear().convertSRGBToLinear(), 150, 100);
+// Lighting
+const light = new PointLight(new Color(colorPicker.value).convertSRGBToLinear(), 80, 50);
 light.position.set(10, 20, 10);
-
 light.castShadow = true;
 light.shadow.mapSize.width = 512;
 light.shadow.mapSize.height = 512;
 light.shadow.camera.near = 0.5;
 light.shadow.camera.far = 500;
+scene.add(light);
 
-scene.add(light)
+// Event Listeners
+colorPicker.addEventListener('input', () => {
+    light.color = new Color(colorPicker.value).convertSRGBToLinear();
+});
 
+sizeSelector.addEventListener('input', async () => {
+    maxSize = parseInt(sizeSelector.value) + 1;
+    await regenerateMap();
+});
+
+// Controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 0);
 controls.dampingFactor = 0.05;
 controls.enableDamping = true;
 
-
-let envmap;
+// Map Constants
 const MAX_HEIGHT = 10;
-
 const STONE_HEIGHT = MAX_HEIGHT * 0.8;
 const DIRT_HEIGHT = MAX_HEIGHT * 0.7;
 const GRASS_HEIGHT = MAX_HEIGHT * 0.5;
 const SAND_HEIGHT = MAX_HEIGHT * 0.3;
 const DIRT2_HEIGHT = MAX_HEIGHT * 0;
 
-(async function () {
-    let pmrem = new PMREMGenerator(renderer);
-    let envmapTexture = await new RGBELoader().setDataType(FloatType).loadAsync("assets/envmap.hdr")
-    envmap = pmrem.fromEquirectangular(envmapTexture).texture;
+// Geometry Containers
+let stoneGeo = new BoxGeometry(0, 0, 0);
+let dirtGeo = new BoxGeometry(0, 0, 0);
+let dirt2Geo = new BoxGeometry(0, 0, 0);
+let sandGeo = new BoxGeometry(0, 0, 0);
+let grassGeo = new BoxGeometry(0, 0, 0);
 
-    let textures = {
+// Environment Map
+let envmap;
+
+// Main Functions
+async function regenerateMap() {
+    clearMap();
+    await createMap();
+}
+
+function clearMap() {
+    // Remove and dispose all meshes
+    resources.meshes.forEach(mesh => {
+        scene.remove(mesh);
+        if (mesh.geometry) {
+            mesh.geometry.dispose();
+            resources.geometries = resources.geometries.filter(g => g !== mesh.geometry);
+        }
+        if (mesh.material) {
+            if (Array.isArray(mesh.material)) {
+                mesh.material.forEach(m => m.dispose());
+                resources.materials = resources.materials.filter(mat => !mesh.material.includes(mat));
+            } else {
+                mesh.material.dispose();
+                resources.materials = resources.materials.filter(mat => mat !== mesh.material);
+            }
+        }
+    });
+    
+    // Dispose remaining resources
+    resources.geometries.forEach(geo => geo.dispose());
+    resources.materials.forEach(mat => mat.dispose());
+    resources.textures.forEach(tex => tex.dispose());
+    resources.envmaps.forEach(env => env.dispose());
+    
+    // Clear all arrays
+    resources.meshes = [];
+    resources.geometries = [];
+    resources.materials = [];
+    resources.textures = [];
+    resources.envmaps = [];
+    
+    // Reset base geometries
+    stoneGeo = new BoxGeometry(0, 0, 0);
+    dirtGeo = new BoxGeometry(0, 0, 0);
+    dirt2Geo = new BoxGeometry(0, 0, 0);
+    sandGeo = new BoxGeometry(0, 0, 0);
+    grassGeo = new BoxGeometry(0, 0, 0);
+}
+
+async function createMap() {
+    // Load environment map
+    const pmrem = new PMREMGenerator(renderer);
+    const envmapTexture = await new RGBELoader().setDataType(FloatType).loadAsync("assets/envmap.hdr");
+    envmap = pmrem.fromEquirectangular(envmapTexture).texture;
+    resources.envmaps.push(envmapTexture);
+
+    // Load textures
+    const textures = {
         dirt: await new TextureLoader().loadAsync("assets/dirt.png"),
         dirt2: await new TextureLoader().loadAsync("assets/dirt2.jpg"),
         grass: await new TextureLoader().loadAsync("assets/grass.jpg"),
         sand: await new TextureLoader().loadAsync("assets/sand.jpg"),
         water: await new TextureLoader().loadAsync("assets/water.jpg"),
-        stone: await new TextureLoader().loadAsync("assets/stone.png"),
+        stone: await new TextureLoader().loadAsync("assets/snow.png"),
     };
+    resources.textures.push(...Object.values(textures));
 
+    // Generate terrain
     const simplex = new SimplexNoise();
+    const sizeValue = parseInt(sizeSelector.value);
 
-    for (let i = -30; i <= 30; i++) {
-        for (let j = -30; j <= 30; j++) {
-            let position = tileToPosition(i, j);
-
-            if (position.length() > 31) continue;
-
+    for (let i = -sizeValue; i <= sizeValue; i++) {
+        for (let j = -sizeValue; j <= sizeValue; j++) {
+            const position = tileToPosition(i, j);
+            if (position.length() > maxSize) continue;
+            
             let noise = (simplex.noise2D(i * 0.1, j * 0.1) + 1) * 0.5;
-            noise = Math.pow(noise, 1.5)
-
+            noise = Math.pow(noise, 1.5);
             makeHex(noise * MAX_HEIGHT, position);
         }
     }
 
-    let stoneMesh = hexMesh(stoneGeo, textures.stone);
-    let grassMesh = hexMesh(grassGeo, textures.grass);
-    let dirtMesh = hexMesh(dirtGeo, textures.dirt);
-    let dirt2Mesh = hexMesh(dirt2Geo, textures.dirt2);
-    let sandMesh = hexMesh(sandGeo, textures.sand);
-
+    // Create terrain meshes
+    const stoneMesh = hexMesh(stoneGeo, textures.stone);
+    const grassMesh = hexMesh(grassGeo, textures.grass);
+    const dirtMesh = hexMesh(dirtGeo, textures.dirt);
+    const dirt2Mesh = hexMesh(dirt2Geo, textures.dirt2);
+    const sandMesh = hexMesh(sandGeo, textures.sand);
     scene.add(stoneMesh, grassMesh, dirtMesh, dirt2Mesh, sandMesh);
 
-    let seaTexture = textures.water;
+    // Create water
+    const seaTexture = textures.water;
     seaTexture.repeat = new Vector2(1, 1);
     seaTexture.wrapS = RepeatWrapping;
     seaTexture.wrapT = RepeatWrapping;
 
-    let seaMesh = new Mesh(
-        new CylinderGeometry(35, 35, MAX_HEIGHT * 0.2, 50),
+    const seaMesh = new Mesh(
+        new CylinderGeometry((maxSize + 4), (maxSize + 4), MAX_HEIGHT * 0.2, 50),
         new MeshPhysicalMaterial({
             envMap: envmap,
             color: new Color("#55aaff").convertSRGBToLinear().multiplyScalar(3),
@@ -113,81 +197,78 @@ const DIRT2_HEIGHT = MAX_HEIGHT * 0;
     seaMesh.rotation.y = -Math.PI * 0.333 * 0.5;
     seaMesh.position.set(0, MAX_HEIGHT * 0.1, 0);
     scene.add(seaMesh);
+    resources.meshes.push(seaMesh);
 
-    let mapContainer = new Mesh(
-        new CylinderGeometry(35.2, 35.2, MAX_HEIGHT * 0.25, 50, 3, true),
+    // Create map container
+    const mapContainer = new Mesh(
+        new CylinderGeometry((maxSize + 4.1), (maxSize + 4.1), MAX_HEIGHT * 0.25, 50, 3, true),
         new MeshPhysicalMaterial({
             envMap: envmap,
             map: textures.dirt,
             envMapIntensity: 0.2,
             side: DoubleSide,
         })
-    )
-
+    );
     mapContainer.receiveShadow = true;
     mapContainer.position.set(0, MAX_HEIGHT * 0.125, 0);
     scene.add(mapContainer);
+    resources.meshes.push(mapContainer);
 
-    let mapFloor = new Mesh(
-        new CylinderGeometry(38, 38, MAX_HEIGHT * 0.1, 50),
+    // Create map floor
+    const mapFloor = new Mesh(
+        new CylinderGeometry((maxSize + 6), (maxSize + 6), MAX_HEIGHT * 0.1, 50),
         new MeshPhysicalMaterial({
             envMap: envmap,
             map: textures.dirt2,
             envMapIntensity: 0.1,
             side: DoubleSide,
         })
-    )
-
+    );
     mapFloor.receiveShadow = true;
     mapFloor.position.set(0, -MAX_HEIGHT * 0.05, 0);
     scene.add(mapFloor);
+    resources.meshes.push(mapFloor);
 
-    clouds();
+    // Add clouds
+    createClouds();
 
+    // Start rendering loop
     renderer.setAnimationLoop(() => {
-        renderer.render(scene, camera)
-    })
-})();
+        renderer.render(scene, camera);
+        controls.update();
+    });
+}
 
+// Helper Functions
 function tileToPosition(tileX, tileY) {
     return new Vector2((tileX + (tileY % 2) * 0.5) * 1.77, tileY * 1.535);
 }
 
-let stoneGeo = new BoxGeometry(0, 0, 0);
-let dirtGeo = new BoxGeometry(0, 0, 0);
-let dirt2Geo = new BoxGeometry(0, 0, 0);
-let sandGeo = new BoxGeometry(0, 0, 0);
-let grassGeo = new BoxGeometry(0, 0, 0);
-
 function hexGeometry(height, position) {
-    let geo = new CylinderGeometry(1, 1, height, 6, 1, false);
-    geo.translate(position.x, height * 0.5, position.y)
-
+    const geo = new CylinderGeometry(1, 1, height, 6, 1, false);
+    geo.translate(position.x, height * 0.5, position.y);
     return geo;
 }
 
 function makeHex(height, position) {
-    let geo = hexGeometry(height, position);
+    const geo = hexGeometry(height, position);
 
     if (height > STONE_HEIGHT) {
         stoneGeo = mergeBufferGeometries([geo, stoneGeo]);
-
         if (Math.random() > 0.8) {
-            stoneGeo = mergeBufferGeometries([stoneGeo, stone(height, position)])
+            stoneGeo = mergeBufferGeometries([stoneGeo, createStone(height, position)]);
         }
     } else if (height > DIRT_HEIGHT) {
         dirtGeo = mergeBufferGeometries([geo, dirtGeo]);
-
         if (Math.random() > 0.8) {
-            grassGeo = mergeBufferGeometries([grassGeo, tree(height, position)])
+            grassGeo = mergeBufferGeometries([grassGeo, createTree(height, position)]);
         }
     } else if (height > GRASS_HEIGHT) {
         grassGeo = mergeBufferGeometries([geo, grassGeo]);
     } else if (height > SAND_HEIGHT) {
         sandGeo = mergeBufferGeometries([geo, sandGeo]);
-
-        if (Math.random() > 0.8 && stoneGeo) {
-            sandGeo = mergeBufferGeometries([sandGeo, stone(height, position)])
+        if (Math.random() > 0.8) {
+            sandGeo = mergeBufferGeometries([sandGeo, createStone(height, position)]);
         }
     } else if (height > DIRT2_HEIGHT) {
         dirt2Geo = mergeBufferGeometries([geo, dirt2Geo]);
@@ -195,47 +276,46 @@ function makeHex(height, position) {
 }
 
 function hexMesh(geo, map) {
-    let mat = new MeshPhysicalMaterial({
+    const mat = new MeshPhysicalMaterial({
         envMap: envmap,
         envMapIntensity: 0.135,
         flatShading: true,
         map
     });
+    resources.materials.push(mat);
+    resources.textures.push(map);
 
-    let mesh = new Mesh(geo, mat);
+    const mesh = new Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    resources.meshes.push(mesh);
+    resources.geometries.push(geo);
+    
     return mesh;
 }
 
-function stone(height, position) {
+function createStone(height, position) {
     const px = Math.random() * 0.4;
     const pz = Math.random() * 0.4;
-
     const geo = new SphereGeometry(Math.random() * 0.3 + 0.1, 7, 7);
-    geo.translate(position.x + px, height, position.y + pz)
-
+    geo.translate(position.x + px, height, position.y + pz);
     return geo;
 }
 
-function tree(height, position) {
+function createTree(height, position) {
     const treeHeight = Math.random() * 1 + 1.25;
-
     const geo = new CylinderGeometry(0, 1.5, treeHeight, 3);
     geo.translate(position.x, height + treeHeight * 0 + 1, position.y);
-
     const geo2 = new CylinderGeometry(0, 1.15, treeHeight, 3);
     geo2.translate(position.x, height + treeHeight * 0.6 + 1, position.y);
-
     const geo3 = new CylinderGeometry(0, 0.8, treeHeight, 3);
     geo3.translate(position.x, height + treeHeight * 1.25 + 1, position.y);
-
     return mergeBufferGeometries([geo, geo2, geo3]);
 }
 
-function clouds() {
+function createClouds() {
     let geo = new SphereGeometry(0, 0, 0);
-    let count = Math.floor(Math.pow(Math.random(), 0.45) * 10);
+    const count = Math.floor(Math.pow(Math.random(), 0.45) * 4);
 
     for (let i = 0; i < count; i++) {
         const puff1 = new SphereGeometry(1.2, 7, 7);
@@ -248,12 +328,11 @@ function clouds() {
 
         const cloudGeo = mergeBufferGeometries([puff1, puff2, puff3]);
         cloudGeo.translate(
-            Math.random() * 35 - 10,
+            Math.random() * (maxSize + 5) - 10,
             Math.random() * 10 + 7,
-            Math.random() * 35 - 10
+            Math.random() * (maxSize + 5) - 10
         );
         cloudGeo.rotateY(Math.random() * Math.PI * 2);
-
         geo = mergeBufferGeometries([geo, cloudGeo]);
     }
 
@@ -265,6 +344,16 @@ function clouds() {
             flatShading: true,
         })
     );
-
     scene.add(mesh);
+    resources.meshes.push(mesh);
 }
+
+// Initialize the map
+createMap();
+
+// Handle window resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
