@@ -3,7 +3,7 @@ import {
     Color, CylinderGeometry, FloatType,
     RepeatWrapping, DoubleSide, BoxGeometry, Mesh, PointLight, MeshPhysicalMaterial, PerspectiveCamera,
     Scene, PMREMGenerator, PCFSoftShadowMap,
-    Vector2, TextureLoader, SphereGeometry, MeshStandardMaterial, DirectionalLightHelper, PointLightHelper
+    Vector2, TextureLoader, SphereGeometry, MeshStandardMaterial, PointLightHelper, AxesHelper, GridHelper
 } from 'https://cdn.skypack.dev/three@0.137';
 import { OrbitControls } from 'https://cdn.skypack.dev/three-stdlib@2.8.5/controls/OrbitControls';
 import { RGBELoader } from 'https://cdn.skypack.dev/three-stdlib@2.8.5/loaders/RGBELoader';
@@ -23,6 +23,7 @@ const resources = {
 const sunPicker = document.getElementById('sun');
 const subSunPicker = document.getElementById('subsun');
 const sizeSelector = document.getElementById('mapSizeSelect');
+const debug = document.getElementById('debug');
 let maxSize = parseInt(sizeSelector.value) + 1;
 
 // Three.js Setup
@@ -42,7 +43,7 @@ renderer.shadowMap.type = PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // Lighting
-const light = new PointLight(new Color(sunPicker.value).convertSRGBToLinear(), 80, 50);
+const light = new PointLight(new Color(sunPicker.value).convertSRGBToLinear().convertSRGBToLinear(), 80, 50);
 light.position.set(10, 20, 10);
 light.castShadow = true;
 light.shadow.mapSize.width = 512;
@@ -51,7 +52,7 @@ light.shadow.camera.near = 0.5;
 light.shadow.camera.far = 500;
 scene.add(light);
 
-const sublight = new PointLight(new Color(subSunPicker.value).convertSRGBToLinear(), 80, 50);
+const sublight = new PointLight(new Color(subSunPicker.value).convertSRGBToLinear().convertSRGBToLinear(), 80, 50);
 sublight.position.set(-10, 20, -10);
 sublight.castShadow = true;
 sublight.shadow.mapSize.width = 512;
@@ -73,6 +74,60 @@ sizeSelector.addEventListener('input', async () => {
     maxSize = parseInt(sizeSelector.value) + 1;
     await regenerateMap();
 });
+
+let lightHelper = null;
+let sublightHelper = null;
+let axesHelper = null;
+let gridHelper = null;
+
+debug.addEventListener('input', () => {
+    const isChecked = debug.checked;
+    console.log('Debug mode:', isChecked);
+
+    if (isChecked) {
+
+        if (!lightHelper) {
+            lightHelper = new PointLightHelper(light, 5);
+            scene.add(lightHelper);
+        }
+        if (!sublightHelper) {
+            sublightHelper = new PointLightHelper(sublight, 5);
+            scene.add(sublightHelper);
+        }
+
+        if (!axesHelper) {
+            axesHelper = new AxesHelper(10);
+            scene.add(axesHelper);
+        }
+
+        if (!gridHelper) {
+            gridHelper = new GridHelper(100, 10);
+            scene.add(gridHelper);
+        }
+
+    } else {
+        if (lightHelper) {
+            scene.remove(lightHelper);
+            lightHelper.dispose();
+            lightHelper = null;
+        }
+        if (sublightHelper) {
+            scene.remove(sublightHelper);
+            sublightHelper.dispose();
+            sublightHelper = null;
+        }
+        if (axesHelper) {
+            scene.remove(axesHelper);
+            axesHelper = null; 
+        }
+        if (gridHelper) {
+            scene.remove(gridHelper);
+            gridHelper = null;
+        }
+    }
+});
+
+
 
 // Controls
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -122,20 +177,20 @@ function clearMap() {
             }
         }
     });
-    
+
     // Dispose remaining resources
     resources.geometries.forEach(geo => geo.dispose());
     resources.materials.forEach(mat => mat.dispose());
     resources.textures.forEach(tex => tex.dispose());
     resources.envmaps.forEach(env => env.dispose());
-    
+
     // Clear all arrays
     resources.meshes = [];
     resources.geometries = [];
     resources.materials = [];
     resources.textures = [];
     resources.envmaps = [];
-    
+
     // Reset base geometries
     stoneGeo = new BoxGeometry(0, 0, 0);
     dirtGeo = new BoxGeometry(0, 0, 0);
@@ -170,7 +225,7 @@ async function createMap() {
         for (let j = -sizeValue; j <= sizeValue; j++) {
             const position = tileToPosition(i, j);
             if (position.length() > maxSize) continue;
-            
+
             let noise = (simplex.noise2D(i * 0.1, j * 0.1) + 1) * 0.5;
             noise = Math.pow(noise, 1.5);
             makeHex(noise * MAX_HEIGHT, position);
@@ -304,7 +359,7 @@ function hexMesh(geo, map) {
     mesh.receiveShadow = true;
     resources.meshes.push(mesh);
     resources.geometries.push(geo);
-    
+
     return mesh;
 }
 
