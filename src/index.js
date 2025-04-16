@@ -3,7 +3,7 @@ import {
     Color, CylinderGeometry, FloatType,
     RepeatWrapping, DoubleSide, BoxGeometry, Mesh, PointLight, MeshPhysicalMaterial, PerspectiveCamera,
     Scene, PMREMGenerator, PCFSoftShadowMap,
-    Vector2, TextureLoader, SphereGeometry, MeshStandardMaterial
+    Vector2, TextureLoader, SphereGeometry, MeshStandardMaterial, DirectionalLightHelper, PointLightHelper
 } from 'https://cdn.skypack.dev/three@0.137';
 import { OrbitControls } from 'https://cdn.skypack.dev/three-stdlib@2.8.5/controls/OrbitControls';
 import { RGBELoader } from 'https://cdn.skypack.dev/three-stdlib@2.8.5/loaders/RGBELoader';
@@ -20,7 +20,8 @@ const resources = {
 };
 
 // DOM Elements
-const colorPicker = document.getElementById('head');
+const sunPicker = document.getElementById('sun');
+const subSunPicker = document.getElementById('subsun');
 const sizeSelector = document.getElementById('mapSizeSelect');
 let maxSize = parseInt(sizeSelector.value) + 1;
 
@@ -41,7 +42,7 @@ renderer.shadowMap.type = PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // Lighting
-const light = new PointLight(new Color(colorPicker.value).convertSRGBToLinear(), 80, 50);
+const light = new PointLight(new Color(sunPicker.value).convertSRGBToLinear(), 80, 50);
 light.position.set(10, 20, 10);
 light.castShadow = true;
 light.shadow.mapSize.width = 512;
@@ -50,9 +51,22 @@ light.shadow.camera.near = 0.5;
 light.shadow.camera.far = 500;
 scene.add(light);
 
+const sublight = new PointLight(new Color(subSunPicker.value).convertSRGBToLinear(), 80, 50);
+sublight.position.set(-10, 20, -10);
+sublight.castShadow = true;
+sublight.shadow.mapSize.width = 512;
+sublight.shadow.mapSize.height = 512;
+sublight.shadow.camera.near = 0.5;
+sublight.shadow.camera.far = 500;
+scene.add(sublight);
+
 // Event Listeners
-colorPicker.addEventListener('input', () => {
-    light.color = new Color(colorPicker.value).convertSRGBToLinear();
+sunPicker.addEventListener('input', () => {
+    light.color = new Color(sunPicker.value).convertSRGBToLinear();
+});
+
+subSunPicker.addEventListener('input', () => {
+    sublight.color = new Color(subSunPicker.value).convertSRGBToLinear();
 });
 
 sizeSelector.addEventListener('input', async () => {
