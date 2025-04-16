@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
 
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script type="module" src="src/index.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
     <style>
         html,
         body {
@@ -14,12 +19,44 @@
             height: 100%;
         }
     </style>
-
-    <script type="module" src="src/index.js"></script>
 </head>
 
 <body>
+    <div class="absolute">
 
+
+        <ul class="menu bg-base-200 rounded-box w-56">
+            <li>
+                <h1>Procedural Map</h1>
+            </li>
+            <li>
+                <a>Lumières</a>
+                <ul>
+                    <li>
+                        <a>
+                            <span class="label-text">Lumiere 1</span>
+                            <input type="color" id="sun" name="light_sun" value="#e66465" class="mt-2" />
+                        </a>
+                    </li>
+                    <li>
+                        <a>
+                            <span class="label-text">Lumiere 2</span>
+                            <input type="color" id="subsun" name="light_sub" value="#42e042" class="mt-2" />
+                        </a>
+                    </li>
+                </ul>
+            </li>
+            <li>
+                <a>Taille de la carte</a>
+                <ul>
+                    <li>
+                        <input type="range" id="mapSizeSelect" min="8" max="32" value="8" step="8"
+                            class="range range-neutral" />
+                    </li>
+                </ul>
+            </li>
+        </ul>
+    </div>
 </body>
 
 </html>
